@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financeiro Interativo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        input[type="number"] { -moz-appearance: textfield; }
+        input::-webkit-inner-spin-button, input::-webkit-outer-spin-button { -webkit-appearance: none; }
+        .editable-input { padding: 4px; border-radius: 4px; border: 1px solid #d1d5db; background-color: #f3f4f6; text-align: center; }
+
+        /* Estilos para a versão mobile */
+        @media (max-width: 768px) {
+            .mobile-card { border: 1px solid #e5e7eb; margin-bottom: 12px; padding: 16px; border-radius: 8px; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+            .mobile-card-item { display: flex; flex-direction: column; margin-bottom: 12px; }
+            .mobile-card-label { font-weight: bold; color: #4b5563; margin-bottom: 4px; }
+            .mobile-card-item input { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background-color: #f3f4f6; }
+            .desktop-table { display: none; }
+        }
+
+        /* Estilos para a versão desktop */
+        @media (min-width: 769px) {
+            .mobile-table { display: none; }
+        }
+
+        /* Estilos para o modal de confirmação e de adicionar */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 300px;
+            width: 90%;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-6 flex justify-center min-h-screen">
+    <div class="container mx-auto p-6 bg-white rounded-lg shadow-xl w-full max-w-6xl">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-4 sm:mb-0">💰 Dashboard Financeiro</h1>
+            <div class="space-y-2 sm:space-y-0 sm:space-x-2 flex flex-col sm:flex-row w-full sm:w-auto">
+                <button onclick="exportarExcel()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded font-bold transition-transform transform hover:scale-105">Exportar Excel</button>
+                <button onclick="exportarPDF()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded font-bold transition-transform transform hover:scale-105">Exportar PDF</button>
+            </div>
+        </div>
+
+        <!-- Resumo -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-green-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Renda Mensal</p>
+                <input type="number" id="renda-mensal-input" value="2771.94" class="w-32 p-2 bg-green-400 text-white rounded mt-1 font-bold editable-input">
+            </div>
+            <div class="bg-blue-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Contribuição da Marcele</p>
+                <p id="contribuicao-marcele-output" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-purple-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Total de Gastos (Meus)</p>
+                <p id="total-meus-gastos" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-indigo-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Total do Casal</p>
+                <p id="total-casal" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-red-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Sobra Mensal</p>
+                <p id="sobra-mensal" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-yellow-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Tempo p/ Quitar Dívida</p>
+                <p id="tempo-divida" class="text-2xl font-bold">0 meses</p>
+            </div>
+        </div>
+
+        <!-- Contas da Casa -->
+        <div class="flex justify-between items-center mb-4 mt-8">
+            <h2 class="text-xl font-bold text-gray-800">Contas da Casa (50/50 com a Marcele)</h2>
+            <button onclick="adicionarContaCasa()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-bold transition-transform transform hover:scale-105">+ Adicionar Conta</button>
+        </div>
+        <div class="overflow-x-auto mb-8 desktop-table">
+            <table class="min-w-full bg-white text-left border rounded-lg" id="contas-casa-desktop">
+                <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                    <tr>
+                        <th class="py-3 px-6">Item</th>
+                        <th class="py-3 px-6">Valor Total</th>
+                        <th class="py-3 px-6">Status</th>
+                        <th class="py-3 px-6 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="contas-casa-table-desktop" class="text-gray-600 text-sm font-light"></tbody>
+            </table>
+        </div>
+        <div class="mobile-table mb-8">
+            <div id="contas-casa-table-mobile"></div>
+        </div>
+
+        <!-- Minhas Contas Pessoais -->
+        <div class="flex justify-between items-center mb-4 mt-8">
+            <h2 class="text-xl font-bold text-gray-800">Minhas Contas Pessoais</h2>
+            <button onclick="adicionarContaPessoal()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-bold transition-transform transform hover:scale-105">+ Adicionar Conta</button>
+        </div>
+        <div class="overflow-x-auto mb-8 desktop-table">
+            <table class="min-w-full bg-white text-left border rounded-lg" id="contas-pessoais-desktop">
+                <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                    <tr>
+                        <th class="py-3 px-6">Item</th>
+                        <th class="py-3 px-6">Valor</th>
+                        <th class="py-3 px-6">Status</th>
+                        <th class="py-3 px-6 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="contas-pessoais-table-desktop" class="text-gray-600 text-sm font-light"></tbody>
+            </table>
+        </div>
+        <div class="mobile-table mb-8">
+            <div id="contas-pessoais-table-mobile"></div>
+        </div>
+
+        <!-- Dívidas -->
+        <div class="flex justify-between items-center mb-4 mt-8">
+            <h2 class="text-xl font-bold text-gray-800">Dívidas em Aberto</h2>
+            <button onclick="adicionarDivida()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-bold transition-transform transform hover:scale-105">+ Adicionar Dívida</button>
+        </div>
+        <div class="overflow-x-auto mb-8 desktop-table">
+            <table class="min-w-full bg-white text-left border rounded-lg" id="dividas-tabela-desktop">
+                <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                    <tr>
+                        <th class="py-3 px-6">Nome da Dívida</th>
+                        <th class="py-3 px-6">Valor Atual</th>
+                        <th class="py-3 px-6">Status</th>
+                        <th class="py-3 px-6 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="dividas-table-desktop" class="text-gray-600 text-sm font-light"></tbody>
+                <tfoot>
+                    <tr class="bg-gray-300 font-bold">
+                        <td class="py-3 px-6">Total de Dívidas</td>
+                        <td id="total-dividas-desktop" class="py-3 px-6"></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="mobile-table mb-8">
+            <div id="dividas-table-mobile"></div>
+            <div class="bg-gray-300 font-bold p-3 text-sm flex justify-between rounded-lg mt-4">
+                <span>Total de Dívidas</span>
+                <span id="total-dividas-mobile"></span>
+            </div>
+        </div>
+
+        <!-- Gráficos -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-4 shadow rounded-lg">
+                <h2 class="text-lg font-bold mb-2">Distribuição dos Meus Gastos</h2>
+                <canvas id="pieChart"></canvas>
+            </div>
+            <div class="bg-white p-4 shadow rounded-lg">
+                <h2 class="text-lg font-bold mb-2">Renda vs Gastos</h2>
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação para Apagar -->
+    <div id="confirmation-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <p class="mb-4 text-gray-800">Tem certeza que deseja apagar este item?</p>
+            <div class="flex justify-center space-x-4">
+                <button id="confirm-yes" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">Sim</button>
+                <button id="confirm-no" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">Não</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar/Editar Nome do Item -->
+    <div id="add-item-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-xl font-bold mb-4" id="add-item-modal-title">Adicionar Nova Conta</h3>
+            <input type="text" id="add-item-name" class="modal-input" placeholder="Nome do item" />
+            <div class="flex justify-center space-x-4">
+                <button id="add-item-save" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">Adicionar</button>
+                <button id="add-item-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dados iniciais
+        const storageKey = "dashboardFinancas";
+        let contasCasa = [
+            { id: 1, item: "Luz", total: 319.55, status: "em aberto" },
+            { id: 2, item: "IPTV", total: 60.00, status: "em aberto" },
+            { id: 3, item: "Internet", total: 120.00, status: "em aberto" },
+            { id: 4, item: "Condomínio", total: 250.00, status: "em aberto" },
+            { id: 5, item: "Prestação do apartamento", total: 670.00, status: "em aberto" }
+        ];
+        let minhasContasPessoais = [
+            { id: 6, item: "Faculdade", valor: 600.00, status: "em aberto" },
+            { id: 7, item: "Dentista", valor: 115.00, status: "em aberto" },
+            { id: 8, item: "Mensalidade da moto", valor: 300.00, status: "em aberto" },
+            { id: 9, item: "Cartão Nubank", valor: 185.00, status: "em aberto" },
+            { id: 10, item: "Rancho/mercado", valor: 400.00, status: "em aberto" }
+        ];
+        let dividas = [
+            { id: 11, nome: "Dívida 1", valor: 1062.99, status: "em aberto" },
+            { id: 12, nome: "Dívida 2", valor: 500.00, status: "em aberto" },
+            { id: 13, nome: "Dívida 3", valor: 0.00, status: "pago" }
+        ];
+
+        // Gerador de IDs único para novos itens
+        let nextId = 100;
+        function generateId() {
+            return nextId++;
+        }
+
+        // Elementos da UI
+        const rendaMensalInput = document.getElementById('renda-mensal-input');
+        const contribuicaoMarceleOutput = document.getElementById('contribuicao-marcele-output');
+        const totalMeusGastosOutput = document.getElementById('total-meus-gastos');
+        const totalCasalOutput = document.getElementById('total-casal');
+        const sobraMensalOutput = document.getElementById('sobra-mensal');
+        const tempoDividaOutput = document.getElementById('tempo-divida');
+        const totalDividasDesktop = document.getElementById('total-dividas-desktop');
+        const totalDividasMobile = document.getElementById('total-dividas-mobile');
+
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const confirmYesButton = document.getElementById('confirm-yes');
+        const confirmNoButton = document.getElementById('confirm-no');
+
+        const addItemModal = document.getElementById('add-item-modal');
+        const addItemModalTitle = document.getElementById('add-item-modal-title');
+        const addItemNameInput = document.getElementById('add-item-name');
+        const addItemSaveButton = document.getElementById('add-item-save');
+        const addItemCancelButton = document.getElementById('add-item-cancel');
+
+        let pendingDeletion = null; // Armazena os detalhes da exclusão pendente
+        let pendingAdditionType = null; // Armazena o tipo de item a ser adicionado
+
+        let pieChart, barChart;
+
+        // Carrega os dados do localStorage
+        function carregarDados() {
+            const savedData = JSON.parse(localStorage.getItem(storageKey));
+            if (savedData) {
+                if (savedData.rendaMensal) rendaMensalInput.value = savedData.rendaMensal;
+                if (savedData.contasCasa) contasCasa = savedData.contasCasa;
+                if (savedData.minhasContasPessoais) minhasContasPessoais = savedData.minhasContasPessoais;
+                if (savedData.dividas) dividas = savedData.dividas;
+                if (savedData.nextId) nextId = savedData.nextId;
+            }
+        }
+        carregarDados();
+
+        // Salva os dados no localStorage
+        function salvarDados() {
+            localStorage.setItem(storageKey, JSON.stringify({
+                rendaMensal: parseFloat(rendaMensalInput.value),
+                contasCasa,
+                minhasContasPessoais,
+                dividas,
+                nextId
+            }));
+        }
+
+        // Formata um valor para moeda R$
+        function formatCurrency(value) {
+            return `R$ ${value.toFixed(2).replace('.', ',')}`;
+        }
+
+        // Funções de ação para contas e dívidas
+        function toggleStatus(arrayName, index) {
+            let itemArray;
+            if (arrayName === 'contasCasa') itemArray = contasCasa;
+            else if (arrayName === 'minhasContasPessoais') itemArray = minhasContasPessoais;
+            else if (arrayName === 'dividas') itemArray = dividas;
+
+            itemArray[index].status = itemArray[index].status === 'em aberto' ? 'pago' : 'em aberto';
+            renderizarTabelas();
+            atualizarDashboard();
+        }
+
+        // Função para exibir o modal de confirmação antes de apagar
+        function apagarItem(arrayName, index) {
+            pendingDeletion = { arrayName, index };
+            confirmationModal.classList.remove('hidden');
+        }
+
+        // Event listeners para o modal de confirmação
+        confirmYesButton.addEventListener('click', () => {
+            if (pendingDeletion) {
+                const { arrayName, index } = pendingDeletion;
+                if (arrayName === 'contasCasa') contasCasa.splice(index, 1);
+                else if (arrayName === 'minhasContasPessoais') minhasContasPessoais.splice(index, 1);
+                else if (arrayName === 'dividas') dividas.splice(index, 1);
+                
+                renderizarTabelas();
+                atualizarDashboard();
+            }
+            confirmationModal.classList.add('hidden');
+            pendingDeletion = null;
+        });
+
+        confirmNoButton.addEventListener('click', () => {
+            confirmationModal.classList.add('hidden');
+            pendingDeletion = null;
+        });
+
+        // Funções para adicionar novos itens (agora usam o modal)
+        function adicionarContaCasa() {
+            pendingAdditionType = 'contasCasa';
+            addItemModalTitle.innerText = 'Adicionar Nova Conta da Casa';
+            addItemNameInput.value = '';
+            addItemModal.classList.remove('hidden');
+        }
+
+        function adicionarContaPessoal() {
+            pendingAdditionType = 'minhasContasPessoais';
+            addItemModalTitle.innerText = 'Adicionar Nova Conta Pessoal';
+            addItemNameInput.value = '';
+            addItemModal.classList.remove('hidden');
+        }
+
+        function adicionarDivida() {
+            pendingAdditionType = 'dividas';
+            addItemModalTitle.innerText = 'Adicionar Nova Dívida';
+            addItemNameInput.value = '';
+            addItemModal.classList.remove('hidden');
+        }
+
+        // Lógica do modal de adição
+        addItemSaveButton.addEventListener('click', () => {
+            const newItemName = addItemNameInput.value.trim();
+            if (newItemName) {
+                if (pendingAdditionType === 'contasCasa') {
+                    contasCasa.push({ id: generateId(), item: newItemName, total: 0.00, status: "em aberto" });
+                } else if (pendingAdditionType === 'minhasContasPessoais') {
+                    minhasContasPessoais.push({ id: generateId(), item: newItemName, valor: 0.00, status: "em aberto" });
+                } else if (pendingAdditionType === 'dividas') {
+                    dividas.push({ id: generateId(), nome: newItemName, valor: 0.00, status: "em aberto" });
+                }
+                
+                renderizarTabelas();
+                atualizarDashboard();
+                addItemModal.classList.add('hidden');
+            } else {
+                alert('Por favor, insira um nome para o item.');
+            }
+        });
+
+        addItemCancelButton.addEventListener('click', () => {
+            addItemModal.classList.add('hidden');
+            pendingAdditionType = null;
+        });
+
+        // Renderiza as tabelas e cards
+        function renderizarTabelas() {
+            // Contas da Casa
+            const tabelaCasaDesktop = document.getElementById('contas-casa-table-desktop');
+            const tabelaCasaMobile = document.getElementById('contas-casa-table-mobile');
+            tabelaCasaDesktop.innerHTML = '';
+            tabelaCasaMobile.innerHTML = '';
+            contasCasa.forEach((conta, i) => {
+                const isPago = conta.status === 'pago';
+                const textColor = isPago ? 'text-gray-500 line-through' : 'text-gray-800';
+                const rowDesktop = document.createElement('tr');
+                rowDesktop.className = `border-b border-gray-200 hover:bg-gray-100 ${isPago ? 'bg-green-100' : ''}`;
+                rowDesktop.innerHTML = `
+                    <td class="py-2 px-6"><input type="text" data-array="contasCasa" data-index="${i}" data-key="item" value="${conta.item}" class="editable-input w-36 ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}></td>
+                    <td class="py-2 px-6"><input type="number" data-array="contasCasa" data-index="${i}" data-key="total" value="${conta.total}" class="editable-input w-24 ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}></td>
+                    <td class="py-2 px-6 ${textColor} capitalize">${conta.status}</td>
+                    <td class="py-2 px-6 text-right">
+                        <button onclick="toggleStatus('contasCasa', ${i})" class="${isPago ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">${isPago ? 'Desmarcar' : 'Pagar'}</button>
+                        <button onclick="apagarItem('contasCasa', ${i})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">Apagar</button>
+                    </td>
+                `;
+                tabelaCasaDesktop.appendChild(rowDesktop);
+
+                const cardMobile = document.createElement('div');
+                cardMobile.className = `mobile-card ${isPago ? 'bg-green-100' : ''}`;
+                cardMobile.innerHTML = `
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Item:</span>
+                        <input type="text" data-array="contasCasa" data-index="${i}" data-key="item" value="${conta.item}" class="editable-input ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Valor Total:</span>
+                        <input type="number" data-array="contasCasa" data-index="${i}" data-key="total" value="${conta.total}" class="editable-input ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Status:</span>
+                        <span class="${textColor} capitalize">${conta.status}</span>
+                    </div>
+                    <div class="flex justify-end space-x-2 mt-2">
+                        <button onclick="toggleStatus('contasCasa', ${i})" class="${isPago ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">${isPago ? 'Desmarcar' : 'Pagar'}</button>
+                        <button onclick="apagarItem('contasCasa', ${i})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">Apagar</button>
+                    </div>
+                `;
+                tabelaCasaMobile.appendChild(cardMobile);
+            });
+
+            // Minhas Contas Pessoais
+            const tabelaPessoaisDesktop = document.getElementById('contas-pessoais-table-desktop');
+            const tabelaPessoaisMobile = document.getElementById('contas-pessoais-table-mobile');
+            tabelaPessoaisDesktop.innerHTML = '';
+            tabelaPessoaisMobile.innerHTML = '';
+            minhasContasPessoais.forEach((conta, i) => {
+                const isPago = conta.status === 'pago';
+                const textColor = isPago ? 'text-gray-500 line-through' : 'text-gray-800';
+                const rowDesktop = document.createElement('tr');
+                rowDesktop.className = `border-b border-gray-200 hover:bg-gray-100 ${isPago ? 'bg-green-100' : ''}`;
+                rowDesktop.innerHTML = `
+                    <td class="py-2 px-6"><input type="text" data-array="minhasContasPessoais" data-index="${i}" data-key="item" value="${conta.item}" class="editable-input w-36 ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}></td>
+                    <td class="py-2 px-6"><input type="number" data-array="minhasContasPessoais" data-index="${i}" data-key="valor" value="${conta.valor}" class="editable-input w-24 ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}></td>
+                    <td class="py-2 px-6 ${textColor} capitalize">${conta.status}</td>
+                    <td class="py-2 px-6 text-right">
+                        <button onclick="toggleStatus('minhasContasPessoais', ${i})" class="${isPago ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">${isPago ? 'Desmarcar' : 'Pagar'}</button>
+                        <button onclick="apagarItem('minhasContasPessoais', ${i})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">Apagar</button>
+                    </td>
+                `;
+                tabelaPessoaisDesktop.appendChild(rowDesktop);
+
+                const cardMobile = document.createElement('div');
+                cardMobile.className = `mobile-card ${isPago ? 'bg-green-100' : ''}`;
+                cardMobile.innerHTML = `
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Item:</span>
+                        <input type="text" data-array="minhasContasPessoais" data-index="${i}" data-key="item" value="${conta.item}" class="editable-input ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Valor:</span>
+                        <input type="number" data-array="minhasContasPessoais" data-index="${i}" data-key="valor" value="${conta.valor}" class="editable-input ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Status:</span>
+                        <span class="${textColor} capitalize">${conta.status}</span>
+                    </div>
+                    <div class="flex justify-end space-x-2 mt-2">
+                        <button onclick="toggleStatus('minhasContasPessoais', ${i})" class="${isPago ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">${isPago ? 'Desmarcar' : 'Pagar'}</button>
+                        <button onclick="apagarItem('minhasContasPessoais', ${i})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">Apagar</button>
+                    </div>
+                `;
+                tabelaPessoaisMobile.appendChild(cardMobile);
+            });
+
+            // Dívidas
+            const tabelaDividasDesktop = document.getElementById('dividas-table-desktop');
+            const tabelaDividasMobile = document.getElementById('dividas-table-mobile');
+            tabelaDividasDesktop.innerHTML = '';
+            tabelaDividasMobile.innerHTML = '';
+            dividas.forEach((divida, i) => {
+                const isPago = divida.status === 'pago';
+                const textColor = isPago ? 'text-gray-500 line-through' : 'text-gray-800';
+
+                // Desktop
+                const rowDesktop = document.createElement('tr');
+                rowDesktop.className = `border-b border-gray-200 hover:bg-gray-100 ${isPago ? 'bg-green-100' : ''}`;
+                rowDesktop.innerHTML = `
+                    <td class="py-2 px-6"><input type="text" data-array="dividas" data-index="${i}" data-key="nome" value="${divida.nome}" class="editable-input w-36 ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}></td>
+                    <td class="py-2 px-6"><input type="number" data-array="dividas" data-index="${i}" data-key="valor" value="${divida.valor}" class="editable-input w-24 ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}></td>
+                    <td class="py-2 px-6 ${textColor} capitalize">${divida.status}</td>
+                    <td class="py-2 px-6 text-right">
+                        <button onclick="toggleStatus('dividas', ${i})" class="${isPago ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">${isPago ? 'Desmarcar' : 'Pagar'}</button>
+                        <button onclick="apagarItem('dividas', ${i})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">Apagar</button>
+                    </td>
+                `;
+                tabelaDividasDesktop.appendChild(rowDesktop);
+
+                // Mobile
+                const cardMobile = document.createElement('div');
+                cardMobile.className = `mobile-card ${isPago ? 'bg-green-100' : ''}`;
+                cardMobile.innerHTML = `
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Dívida:</span>
+                        <input type="text" data-array="dividas" data-index="${i}" data-key="nome" value="${divida.nome}" class="editable-input ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Valor Atual:</span>
+                        <input type="number" data-array="dividas" data-index="${i}" data-key="valor" value="${divida.valor}" class="editable-input ${isPago ? 'bg-gray-200' : ''}" ${isPago ? 'disabled' : ''}>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Status:</span>
+                        <span class="${textColor} capitalize">${divida.status}</span>
+                    </div>
+                    <div class="flex justify-end space-x-2 mt-2">
+                        <button onclick="toggleStatus('dividas', ${i})" class="${isPago ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">${isPago ? 'Desmarcar' : 'Pagar'}</button>
+                        <button onclick="apagarItem('dividas', ${i})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs transition-all transform hover:scale-105">Apagar</button>
+                    </div>
+                `;
+                tabelaDividasMobile.appendChild(cardMobile);
+            });
+        }
+        renderizarTabelas();
+
+        // Função para atualizar o dashboard
+        function atualizarDashboard() {
+            // 1. Ler os dados dos inputs
+            const rendaMensal = parseFloat(rendaMensalInput.value) || 0;
+
+            // Recalcula os totais com base nos dados mais recentes e status 'em aberto'
+            let totalContasCasa = contasCasa
+                .filter(c => c.status === 'em aberto')
+                .reduce((acc, curr) => acc + (parseFloat(curr.total) || 0), 0);
+
+            let totalMinhasContasPessoais = minhasContasPessoais
+                .filter(c => c.status === 'em aberto')
+                .reduce((acc, curr) => acc + (parseFloat(curr.valor) || 0), 0);
+
+            let totalDividasEmAberto = dividas
+                .filter(d => d.status === 'em aberto')
+                .reduce((acc, curr) => acc + (parseFloat(curr.valor) || 0), 0);
+
+            // 2. Realizar os cálculos
+            const minhaParteCasa = totalContasCasa / 2;
+            const contribuicaoMarcele = totalContasCasa / 2;
+            const totalMeusGastos = minhaParteCasa + totalMinhasContasPessoais;
+            const totalCasal = totalContasCasa + totalMinhasContasPessoais + contribuicaoMarcele;
+            const sobraMensal = rendaMensal - totalMeusGastos;
+            const tempoDivida = sobraMensal > 0 ? Math.ceil(totalDividasEmAberto / sobraMensal) : '∞';
+
+            // 3. Atualizar a UI
+            contribuicaoMarceleOutput.innerText = formatCurrency(contribuicaoMarcele);
+            totalMeusGastosOutput.innerText = formatCurrency(totalMeusGastos);
+            totalCasalOutput.innerText = formatCurrency(totalCasal);
+            sobraMensalOutput.innerText = formatCurrency(sobraMensal);
+            tempoDividaOutput.innerText = tempoDivida === '∞' ? '∞' : `${tempoDivida} meses`;
+            totalDividasDesktop.innerText = formatCurrency(totalDividasEmAberto);
+            totalDividasMobile.innerText = formatCurrency(totalDividasEmAberto);
+
+            // 4. Salvar dados
+            salvarDados();
+
+            // 5. Atualizar gráficos
+            atualizarGraficos(totalMeusGastos, sobraMensal, rendaMensal);
+        }
+
+        // Função para atualizar os gráficos
+        function atualizarGraficos(totalMeusGastos, sobraMensal, rendaMensal) {
+            const labelsPizza = minhasContasPessoais.filter(c => c.status === 'em aberto').map(c => c.item)
+                .concat(contasCasa.filter(c => c.status === 'em aberto').map(c => `${c.item} (minha parte)`));
+            const valoresPizza = minhasContasPessoais.filter(c => c.status === 'em aberto').map(c => parseFloat(c.valor) || 0)
+                .concat(contasCasa.filter(c => c.status === 'em aberto').map(c => (parseFloat(c.total) || 0) / 2));
+
+            const labelsBarra = ['Renda', 'Gastos', 'Sobra'];
+            const valoresBarra = [rendaMensal, totalMeusGastos, sobraMensal];
+
+            if (pieChart) pieChart.destroy();
+            pieChart = new Chart(document.getElementById('pieChart'), {
+                type: 'pie',
+                data: {
+                    labels: labelsPizza,
+                    datasets: [{
+                        data: valoresPizza,
+                        backgroundColor: ['#4ade80', '#3b82f6', '#facc15', '#f87171', '#a855f7', '#fb923c', '#14b8a6', '#818cf8', '#e879f9', '#22c55e', '#ef4444']
+                    }]
+                }
+            });
+
+            if (barChart) barChart.destroy();
+            barChart = new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: labelsBarra,
+                    datasets: [{
+                        data: valoresBarra,
+                        backgroundColor: ['#22c55e', '#ef4444', '#3b82f6']
+                    }]
+                },
+                options: { scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        // Funções de exportação
+        function exportarExcel() {
+            const wb = XLSX.utils.book_new();
+            const wsData = [
+                ["Contas da Casa", "", ""],
+                ["Item", "Valor Total", "Status"],
+                ...contasCasa.map(c => [c.item, c.total, c.status]),
+                ["Minhas Contas Pessoais", "", ""],
+                ["Item", "Valor", "Status"],
+                ...minhasContasPessoais.map(c => [c.item, c.valor, c.status]),
+                ["Dívidas", "", ""],
+                ["Nome da Dívida", "Valor Atual", "Status"],
+                ...dividas.map(d => [d.nome, d.valor, d.status])
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, "Finanças");
+            XLSX.writeFile(wb, "dashboard_financeiro.xlsx");
+        }
+
+        function exportarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.text("Resumo Financeiro", 10, 10);
+            doc.text(`Renda Mensal: ${formatCurrency(parseFloat(rendaMensalInput.value) || 0)}`, 10, 20);
+            doc.text(`Contribuição da Marcele: ${contribuicaoMarceleOutput.innerText}`, 10, 30);
+            doc.text(`Total de Gastos (Meus): ${totalMeusGastosOutput.innerText}`, 10, 40);
+            doc.text(`Total do Casal: ${totalCasalOutput.innerText}`, 10, 50);
+            doc.text(`Sobra Mensal: ${sobraMensalOutput.innerText}`, 10, 60);
+            doc.text(`Tempo para Quitar Dívida: ${tempoDividaOutput.innerText}`, 10, 70);
+            doc.save("dashboard_financeiro.pdf");
+        }
+
+        // Event listener para todos os inputs e selects
+        document.addEventListener('input', (e) => {
+            const target = e.target;
+            if (target.classList.contains('editable-input') || target.id === 'renda-mensal-input') {
+                const arrayName = target.dataset.array;
+                const index = parseInt(target.dataset.index);
+                const key = target.dataset.key;
+
+                if (arrayName && key) {
+                    let value = target.value;
+                    if (key === 'valor' || key === 'total') {
+                        value = parseFloat(value) || 0;
+                    }
+                    if (arrayName === "contasCasa") {
+                        contasCasa[index][key] = value;
+                    } else if (arrayName === "minhasContasPessoais") {
+                        minhasContasPessoais[index][key] = value;
+                    } else if (arrayName === "dividas") {
+                        dividas[index][key] = value;
+                    }
+                }
+                atualizarDashboard();
+            }
+        });
+
+        // Chamada inicial
+        atualizarDashboard();
+    </script>
+</body>
+</html>
