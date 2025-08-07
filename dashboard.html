@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financeiro Interativo</title>
+    <!-- Link para o arquivo manifest.json, essencial para o PWA -->
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        input[type="number"] { -moz-appearance: textfield; }
+        input::-webkit-inner-spin-button, input::-webkit-outer-spin-button { -webkit-appearance: none; }
+        .editable-input { 
+            padding: 4px; 
+            border-radius: 4px; 
+            border: 1px solid #d1d5db; 
+            background-color: #f3f4f6; 
+            text-align: center; 
+        }
+
+        /* Estilos para a versão mobile */
+        @media (max-width: 768px) {
+            .mobile-card { 
+                border: 1px solid #e5e7eb; 
+                margin-bottom: 12px; 
+                padding: 16px; 
+                border-radius: 8px; 
+                background-color: #fff; 
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+            }
+            .mobile-card-item { 
+                display: flex; 
+                flex-direction: column; 
+                margin-bottom: 12px; 
+            }
+            .mobile-card-label { 
+                font-weight: bold; 
+                color: #4b5563; 
+                margin-bottom: 4px; 
+            }
+            .mobile-card-item input { 
+                width: 100%; 
+                padding: 8px; 
+                border: 1px solid #d1d5db; 
+                border-radius: 4px; 
+                background-color: #f3f4f6; 
+            }
+            .desktop-table { display: none; }
+        }
+
+        /* Estilos para a versão desktop */
+        @media (min-width: 769px) {
+            .mobile-table { display: none; }
+        }
+
+        /* Estilos para o modal de confirmação e de adicionar */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 300px;
+            width: 90%;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-6 flex justify-center min-h-screen">
+    <div class="container mx-auto p-6 bg-white rounded-lg shadow-xl w-full max-w-6xl">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-4 sm:mb-0">💰 Dashboard Financeiro</h1>
+            <div class="space-y-2 sm:space-y-0 sm:space-x-2 flex flex-col sm:flex-row w-full sm:w-auto">
+                <button onclick="exportarExcel()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded font-bold transition-transform transform hover:scale-105">Exportar Excel</button>
+                <button onclick="exportarPDF()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded font-bold transition-transform transform hover:scale-105">Exportar PDF</button>
+            </div>
+        </div>
+
+        <!-- Resumo -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-green-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Renda Mensal</p>
+                <input type="number" id="renda-mensal-input" value="2771.94" class="w-32 p-2 bg-green-400 text-white rounded mt-1 font-bold editable-input">
+            </div>
+            <div class="bg-blue-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Contribuição da Marcele</p>
+                <p id="contribuicao-marcele-output" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-purple-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Total de Gastos (Meus)</p>
+                <p id="total-meus-gastos" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-indigo-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Total do Casal</p>
+                <p id="total-casal" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-red-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Sobra Mensal</p>
+                <p id="sobra-mensal" class="text-2xl font-bold">R$ 0,00</p>
+            </div>
+            <div class="bg-yellow-500 text-white p-4 rounded-lg shadow-md flex flex-col justify-center items-center text-center">
+                <p class="text-sm">Tempo p/ Quitar Dívida</p>
+                <p id="tempo-divida" class="text-2xl font-bold">0 meses</p>
+            </div>
+        </div>
+
+        <!-- Contas da Casa -->
+        <div class="flex justify-between items-center mb-4 mt-8">
+            <h2 class="text-xl font-bold text-gray-800">Contas da Casa (50/50 com a Marcele)</h2>
+            <button onclick="adicionarContaCasa()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-bold transition-transform transform hover:scale-105">+ Adicionar Conta</button>
+        </div>
+        <div class="overflow-x-auto mb-8 desktop-table">
+            <table class="min-w-full bg-white text-left border rounded-lg" id="contas-casa-desktop">
+                <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                    <tr>
+                        <th class="py-3 px-6">Item</th>
+                        <th class="py-3 px-6">Valor Total</th>
+                        <th class="py-3 px-6">Status</th>
+                        <th class="py-3 px-6 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="contas-casa-table-desktop" class="text-gray-600 text-sm font-light"></tbody>
+            </table>
+        </div>
+        <div class="mobile-table mb-8">
+            <div id="contas-casa-table-mobile"></div>
+        </div>
+
+        <!-- Minhas Contas Pessoais -->
+        <div class="flex justify-between items-center mb-4 mt-8">
+            <h2 class="text-xl font-bold text-gray-800">Minhas Contas Pessoais</h2>
+            <button onclick="adicionarContaPessoal()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-bold transition-transform transform hover:scale-105">+ Adicionar Conta</button>
+        </div>
+        <div class="overflow-x-auto mb-8 desktop-table">
+            <table class="min-w-full bg-white text-left border rounded-lg" id="contas-pessoais-desktop">
+                <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                    <tr>
+                        <th class="py-3 px-6">Item</th>
+                        <th class="py-3 px-6">Valor</th>
+                        <th class="py-3 px-6">Status</th>
+                        <th class="py-3 px-6 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="contas-pessoais-table-desktop" class="text-gray-600 text-sm font-light"></tbody>
+            </table>
+        </div>
+        <div class="mobile-table mb-8">
+            <div id="contas-pessoais-table-mobile"></div>
+        </div>
+
+        <!-- Dívidas -->
+        <div class="flex justify-between items-center mb-4 mt-8">
+            <h2 class="text-xl font-bold text-gray-800">Dívidas em Aberto</h2>
+            <button onclick="adicionarDivida()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-bold transition-transform transform hover:scale-105">+ Adicionar Dívida</button>
+        </div>
+        <div class="overflow-x-auto mb-8 desktop-table">
+            <table class="min-w-full bg-white text-left border rounded-lg" id="dividas-tabela-desktop">
+                <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                    <tr>
+                        <th class="py-3 px-6">Nome da Dívida</th>
+                        <th class="py-3 px-6">Valor Atual</th>
+                        <th class="py-3 px-6">Status</th>
+                        <th class="py-3 px-6 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="dividas-table-desktop" class="text-gray-600 text-sm font-light"></tbody>
+                <tfoot>
+                    <tr class="bg-gray-300 font-bold">
+                        <td class="py-3 px-6">Total de Dívidas</td>
+                        <td id="total-dividas-desktop" class="py-3 px-6"></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="mobile-table mb-8">
+            <div id="dividas-table-mobile"></div>
+            <div class="bg-gray-300 font-bold p-3 text-sm flex justify-between rounded-lg mt-4">
+                <span>Total de Dívidas</span>
+                <span id="total-dividas-mobile"></span>
+            </div>
+        </div>
+
+        <!-- Gráficos -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-4 shadow rounded-lg">
+                <h2 class="text-lg font-bold mb-2">Distribuição dos Meus Gastos</h2>
+                <canvas id="pieChart"></canvas>
+            </div>
+            <div class="bg-white p-4 shadow rounded-lg">
+                <h2 class="text-lg font-bold mb-2">Renda vs Gastos</h2>
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação para Apagar -->
+    <div id="confirmation-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <p class="mb-4 text-gray-800">Tem certeza que deseja apagar este item?</p>
+            <div class="flex justify-center space-x-4">
+                <button id="confirm-yes" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">Sim</button>
+                <button id="confirm-no" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">Não</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar/Editar Nome do Item -->
+    <div id="add-item-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-xl font-bold mb-4" id="add-item-modal-title">Adicionar Nova Conta</h3>
+            <input type="text" id="add-item-name" class="modal-input" placeholder="Nome do item" />
+            <div class="flex justify-center space-x-4">
+                <button id="add-item-save" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">Adicionar</button>
+                <button id="add-item-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dados iniciais e armazenamento local
+        const storageKey = "dashboardFinancas";
+        let contasCasa = [
+            { id: 1, item: "Luz", total: 319.55, status: "em aberto" },
+            { id: 2, item: "IPTV", total: 60.00, status: "em aberto" },
+            { id: 3, item: "Internet", total: 120.00, status: "em aberto" },
+            { id: 4, item: "Condomínio", total: 250.00, status: "em aberto" },
+            { id: 5, item: "Prestação do apartamento", total: 670.00, status: "em aberto" }
+        ];
+        let minhasContasPessoais = [
+            { id: 6, item: "Faculdade", valor: 600.00, status: "em aberto" },
+            { id: 7, item: "Dentista", valor: 115.00, status: "em aberto" },
+            { id: 8, item: "Mensalidade da moto", valor: 300.00, status: "em aberto" },
+            { id: 9, item: "Cartão Nubank", valor: 185.00, status: "em aberto" },
+            { id: 10, item: "Rancho/mercado", valor: 400.00, status: "em aberto" }
+        ];
+        let dividas = [
+            { id: 11, nome: "Dívida 1", valor: 1062.99, status: "em aberto" },
+            { id: 12, nome: "Dívida 2", valor: 500.00, status: "em aberto" },
+            { id: 13, nome: "Dívida 3", valor: 0.00, status: "pago" }
+        ];
+        
+        let nextId = 100;
+        function generateId() {
+            return nextId++;
+        }
+
+        // Elementos da UI
+        const rendaMensalInput = document.getElementById('renda-mensal-input');
+        const contribuicaoMarceleOutput = document.getElementById('contribuicao-marcele-output');
+        const totalMeusGastosOutput = document.getElementById('total-meus-gastos');
+        const totalCasalOutput = document.getElementById('total-casal');
+        const sobraMensalOutput = document.getElementById('sobra-mensal');
+        const tempoDividaOutput = document.getElementById('tempo-divida');
+        const totalDividasDesktop = document.getElementById('total-dividas-desktop');
+        const totalDividasMobile = document.getElementById('total-dividas-mobile');
+
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const confirmYesButton = document.getElementById('confirm-yes');
+        const confirmNoButton = document.getElementById('confirm-no');
+        
+        const addItemModal = document.getElementById('add-item-modal');
+        const addItemModalTitle = document.getElementById('add-item-modal-title');
+        const addItemNameInput = document.getElementById('add-item-name');
+        const addItemSaveButton = document.getElementById('add-item-save');
+        const addItemCancelButton = document.getElementById('add-item-cancel');
+
+        let pendingDeletion = null;
+        let pendingAdditionType = null;
+        let pieChart, barChart;
+
+        // Funções de utilidade
+        function formatCurrency(value) {
+            return `R$ ${value.toFixed(2).replace('.', ',')}`;
+        }
+
+        // Funções de carregamento e salvamento
+        function carregarDados() {
+            try {
+                const savedData = JSON.parse(localStorage.getItem(storageKey));
+                if (savedData) {
+                    if (savedData.rendaMensal) rendaMensalInput.value = savedData.rendaMensal;
+                    if (savedData.contasCasa) contasCasa = savedData.contasCasa;
+                    if (savedData.minhasContasPessoais) minhasContasPessoais = savedData.minhasContasPessoais;
+                    if (savedData.dividas) dividas = savedData.dividas;
+                    if (savedData.nextId) nextId = savedData.nextId;
+                }
+            } catch (e) {
+                console.error("Erro ao carregar dados do localStorage", e);
+            }
+        }
+        function salvarDados() {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify({
+                    rendaMensal: parseFloat(rendaMensalInput.value),
+                    contasCasa,
+                    minhasContasPessoais,
+                    dividas,
+                    nextId
+                }));
+            } catch (e) {
+                console.error("Erro ao salvar dados no localStorage", e);
+            }
+        }
+
+        // Funções de renderização
+        function renderizarTabelas() {
+            renderizarContasCasa();
+            renderizarContasPessoais();
+            renderizarDividas();
+            salvarDados();
+        }
+
+        function renderizarContasCasa() {
+            const tableDesktop = document.getElementById('contas-casa-table-desktop');
+            const tableMobile = document.getElementById('contas-casa-table-mobile');
+            tableDesktop.innerHTML = '';
+            tableMobile.innerHTML = '';
+
+            contasCasa.forEach((conta, index) => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-100');
+                const statusClass = conta.status === 'pago' ? 'bg-green-200 text-green-600' : 'bg-red-200 text-red-600';
+                row.innerHTML = `
+                    <td class="py-3 px-6">${conta.item}</td>
+                    <td class="py-3 px-6">${formatCurrency(conta.total)}</td>
+                    <td class="py-3 px-6"><span class="py-1 px-3 rounded-full text-xs font-bold ${statusClass}">${conta.status}</span></td>
+                    <td class="py-3 px-6 text-right">
+                        <button onclick="toggleStatus('contasCasa', ${index})" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded-md text-xs font-bold">Mudar Status</button>
+                        <button onclick="apagarItem('contasCasa', ${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold ml-2">Apagar</button>
+                    </td>
+                `;
+                tableDesktop.appendChild(row);
+
+                // Versão mobile
+                const mobileCard = document.createElement('div');
+                mobileCard.classList.add('mobile-card');
+                mobileCard.innerHTML = `
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Item:</span>
+                        <span>${conta.item}</span>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Valor Total:</span>
+                        <span>${formatCurrency(conta.total)}</span>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Status:</span>
+                        <span class="py-1 px-3 rounded-full text-xs font-bold ${statusClass}">${conta.status}</span>
+                    </div>
+                    <div class="flex justify-end mt-4">
+                        <button onclick="toggleStatus('contasCasa', ${index})" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded-md text-xs font-bold">Mudar Status</button>
+                        <button onclick="apagarItem('contasCasa', ${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold ml-2">Apagar</button>
+                    </div>
+                `;
+                tableMobile.appendChild(mobileCard);
+            });
+        }
+
+        function renderizarContasPessoais() {
+            const tableDesktop = document.getElementById('contas-pessoais-table-desktop');
+            const tableMobile = document.getElementById('contas-pessoais-table-mobile');
+            tableDesktop.innerHTML = '';
+            tableMobile.innerHTML = '';
+
+            minhasContasPessoais.forEach((conta, index) => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-100');
+                const statusClass = conta.status === 'pago' ? 'bg-green-200 text-green-600' : 'bg-red-200 text-red-600';
+                row.innerHTML = `
+                    <td class="py-3 px-6">${conta.item}</td>
+                    <td class="py-3 px-6">${formatCurrency(conta.valor)}</td>
+                    <td class="py-3 px-6"><span class="py-1 px-3 rounded-full text-xs font-bold ${statusClass}">${conta.status}</span></td>
+                    <td class="py-3 px-6 text-right">
+                        <button onclick="toggleStatus('minhasContasPessoais', ${index})" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded-md text-xs font-bold">Mudar Status</button>
+                        <button onclick="apagarItem('minhasContasPessoais', ${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold ml-2">Apagar</button>
+                    </td>
+                `;
+                tableDesktop.appendChild(row);
+                
+                const mobileCard = document.createElement('div');
+                mobileCard.classList.add('mobile-card');
+                mobileCard.innerHTML = `
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Item:</span>
+                        <span>${conta.item}</span>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Valor:</span>
+                        <span>${formatCurrency(conta.valor)}</span>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Status:</span>
+                        <span class="py-1 px-3 rounded-full text-xs font-bold ${statusClass}">${conta.status}</span>
+                    </div>
+                    <div class="flex justify-end mt-4">
+                        <button onclick="toggleStatus('minhasContasPessoais', ${index})" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded-md text-xs font-bold">Mudar Status</button>
+                        <button onclick="apagarItem('minhasContasPessoais', ${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold ml-2">Apagar</button>
+                    </div>
+                `;
+                tableMobile.appendChild(mobileCard);
+            });
+        }
+
+        function renderizarDividas() {
+            const tableDesktop = document.getElementById('dividas-table-desktop');
+            const tableMobile = document.getElementById('dividas-table-mobile');
+            tableDesktop.innerHTML = '';
+            tableMobile.innerHTML = '';
+
+            let totalDividas = 0;
+            dividas.forEach((divida, index) => {
+                totalDividas += divida.valor;
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-100');
+                const statusClass = divida.status === 'pago' ? 'bg-green-200 text-green-600' : 'bg-red-200 text-red-600';
+                row.innerHTML = `
+                    <td class="py-3 px-6">${divida.nome}</td>
+                    <td class="py-3 px-6">${formatCurrency(divida.valor)}</td>
+                    <td class="py-3 px-6"><span class="py-1 px-3 rounded-full text-xs font-bold ${statusClass}">${divida.status}</span></td>
+                    <td class="py-3 px-6 text-right">
+                        <button onclick="toggleStatus('dividas', ${index})" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded-md text-xs font-bold">Mudar Status</button>
+                        <button onclick="apagarItem('dividas', ${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold ml-2">Apagar</button>
+                    </td>
+                `;
+                tableDesktop.appendChild(row);
+                
+                const mobileCard = document.createElement('div');
+                mobileCard.classList.add('mobile-card');
+                mobileCard.innerHTML = `
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Nome da Dívida:</span>
+                        <span>${divida.nome}</span>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Valor Atual:</span>
+                        <span>${formatCurrency(divida.valor)}</span>
+                    </div>
+                    <div class="mobile-card-item">
+                        <span class="mobile-card-label">Status:</span>
+                        <span class="py-1 px-3 rounded-full text-xs font-bold ${statusClass}">${divida.status}</span>
+                    </div>
+                    <div class="flex justify-end mt-4">
+                        <button onclick="toggleStatus('dividas', ${index})" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded-md text-xs font-bold">Mudar Status</button>
+                        <button onclick="apagarItem('dividas', ${index})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold ml-2">Apagar</button>
+                    </div>
+                `;
+                tableMobile.appendChild(mobileCard);
+            });
+            totalDividasDesktop.innerText = formatCurrency(totalDividas);
+            totalDividasMobile.innerText = formatCurrency(totalDividas);
+        }
+
+        // Funções de dashboard
+        function atualizarDashboard() {
+            salvarDados();
+            
+            const rendaMensal = parseFloat(rendaMensalInput.value) || 0;
+            const totalContasCasa = contasCasa.reduce((sum, item) => item.status === 'em aberto' ? sum + item.total : sum, 0);
+            const totalMinhasContas = minhasContasPessoais.reduce((sum, item) => item.status === 'em aberto' ? sum + item.valor : sum, 0);
+            const totalDividas = dividas.reduce((sum, item) => item.status === 'em aberto' ? sum + item.valor : sum, 0);
+
+            const contribuicaoMarcele = totalContasCasa / 2;
+            const meusGastosTotais = (totalContasCasa / 2) + totalMinhasContas;
+            const totalCasal = totalContasCasa + totalMinhasContas;
+            const sobraMensal = rendaMensal - meusGastosTotais;
+            const tempoDivida = totalDividas > 0 ? Math.ceil(totalDividas / sobraMensal) : 0;
+            
+            contribuicaoMarceleOutput.innerText = formatCurrency(contribuicaoMarcele);
+            totalMeusGastosOutput.innerText = formatCurrency(meusGastosTotais);
+            totalCasalOutput.innerText = formatCurrency(totalCasal);
+            sobraMensalOutput.innerText = formatCurrency(sobraMensal);
+            tempoDividaOutput.innerText = `${tempoDivida} meses`;
+
+            atualizarGraficos(meusGastosTotais, rendaMensal, totalMinhasContas, (totalContasCasa / 2));
+        }
+
+        function atualizarGraficos(meusGastosTotais, rendaMensal, totalMinhasContas, minhaParteCasa) {
+            // Gráfico de Pizza
+            const pieData = {
+                labels: ['Minhas Contas Pessoais', 'Minha Parte da Casa'],
+                datasets: [{
+                    data: [totalMinhasContas, minhaParteCasa],
+                    backgroundColor: ['#6366f1', '#a855f7'],
+                    hoverOffset: 4
+                }]
+            };
+
+            if (pieChart) {
+                pieChart.data = pieData;
+                pieChart.update();
+            } else {
+                const pieCtx = document.getElementById('pieChart').getContext('2d');
+                pieChart = new Chart(pieCtx, {
+                    type: 'pie',
+                    data: pieData
+                });
+            }
+
+            // Gráfico de Barras
+            const barData = {
+                labels: ['Renda Mensal', 'Meus Gastos Totais'],
+                datasets: [{
+                    label: 'Valores',
+                    data: [rendaMensal, meusGastosTotais],
+                    backgroundColor: ['#10B981', '#f87171'],
+                    borderColor: ['#059669', '#ef4444'],
+                    borderWidth: 1
+                }]
+            };
+            
+            if (barChart) {
+                barChart.data = barData;
+                barChart.update();
+            } else {
+                const barCtx = document.getElementById('barChart').getContext('2d');
+                barChart = new Chart(barCtx, {
+                    type: 'bar',
+                    data: barData,
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Funções de ação
+        function toggleStatus(arrayName, index) {
+            let itemArray;
+            if (arrayName === 'contasCasa') itemArray = contasCasa;
+            else if (arrayName === 'minhasContasPessoais') itemArray = minhasContasPessoais;
+            else if (arrayName === 'dividas') itemArray = dividas;
+            itemArray[index].status = itemArray[index].status === 'em aberto' ? 'pago' : 'em aberto';
+            renderizarTabelas();
+            atualizarDashboard();
+        }
+
+        function apagarItem(arrayName, index) {
+            pendingDeletion = { arrayName, index };
+            confirmationModal.classList.remove('hidden');
+        }
+
+        function adicionarContaCasa() {
+            pendingAdditionType = 'contasCasa';
+            addItemModalTitle.innerText = 'Adicionar Nova Conta da Casa';
+            addItemNameInput.value = '';
+            addItemModal.classList.remove('hidden');
+        }
+
+        function adicionarContaPessoal() {
+            pendingAdditionType = 'minhasContasPessoais';
+            addItemModalTitle.innerText = 'Adicionar Nova Conta Pessoal';
+            addItemNameInput.value = '';
+            addItemModal.classList.remove('hidden');
+        }
+
+        function adicionarDivida() {
+            pendingAdditionType = 'dividas';
+            addItemModalTitle.innerText = 'Adicionar Nova Dívida';
+            addItemNameInput.value = '';
+            addItemModal.classList.remove('hidden');
+        }
+
+        function exportarExcel() {
+            const data = [
+                ["Dashboard Financeiro"],
+                [],
+                ["Renda Mensal", "Contribuição da Marcele", "Total Meus Gastos", "Total do Casal", "Sobra Mensal", "Tempo p/ Quitar Dívida"],
+                [
+                    parseFloat(rendaMensalInput.value),
+                    (contasCasa.reduce((sum, item) => sum + item.total, 0) / 2),
+                    (contasCasa.reduce((sum, item) => sum + item.total, 0) / 2) + minhasContasPessoais.reduce((sum, item) => sum + item.valor, 0),
+                    contasCasa.reduce((sum, item) => sum + item.total, 0) + minhasContasPessoais.reduce((sum, item) => sum + item.valor, 0),
+                    parseFloat(rendaMensalInput.value) - ((contasCasa.reduce((sum, item) => sum + item.total, 0) / 2) + minhasContasPessoais.reduce((sum, item) => sum + item.valor, 0)),
+                    (dividas.reduce((sum, item) => sum + item.valor, 0) > 0 ? Math.ceil(dividas.reduce((sum, item) => sum + item.valor, 0) / (parseFloat(rendaMensalInput.value) - ((contasCasa.reduce((sum, item) => sum + item.total, 0) / 2) + minhasContasPessoais.reduce((sum, item) => sum + item.valor, 0)))) : 0)
+                ],
+                [],
+                ["Contas da Casa"],
+                ["Item", "Valor Total", "Status"],
+                ...contasCasa.map(item => [item.item, item.total, item.status]),
+                [],
+                ["Minhas Contas Pessoais"],
+                ["Item", "Valor", "Status"],
+                ...minhasContasPessoais.map(item => [item.item, item.valor, item.status]),
+                [],
+                ["Dívidas em Aberto"],
+                ["Nome da Dívida", "Valor Atual", "Status"],
+                ...dividas.map(item => [item.nome, item.valor, item.status])
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Dashboard Financeiro");
+            XLSX.writeFile(wb, "dashboard_financeiro.xlsx");
+        }
+
+        function exportarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFontSize(22);
+            doc.text("Dashboard Financeiro", 10, 20);
+            
+            doc.setFontSize(12);
+            doc.text(`Renda Mensal: ${rendaMensalInput.value}`, 10, 30);
+            doc.text(`Contribuição da Marcele: ${contribuicaoMarceleOutput.innerText}`, 10, 40);
+            doc.text(`Total de Gastos (Meus): ${totalMeusGastosOutput.innerText}`, 10, 50);
+            doc.text(`Total do Casal: ${totalCasalOutput.innerText}`, 10, 60);
+            doc.text(`Sobra Mensal: ${sobraMensalOutput.innerText}`, 10, 70);
+            doc.text(`Tempo para Quitar Dívida: ${tempoDividaOutput.innerText}`, 10, 80);
+            
+            doc.save("dashboard_financeiro.pdf");
+        }
+
+        // Event Listeners
+        window.addEventListener('load', () => {
+            carregarDados();
+            renderizarTabelas();
+            atualizarDashboard();
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('Service Worker registrado!', reg))
+                    .catch(err => console.log('Registro do Service Worker falhou:', err));
+            }
+        });
+
+        document.addEventListener('input', (e) => {
+            const target = e.target;
+            if (target.id === 'renda-mensal-input') {
+                atualizarDashboard();
+                return;
+            }
+            if (target.classList.contains('editable-input') || target.classList.contains('status-select')) {
+                const arrayName = target.dataset.array;
+                const index = parseInt(target.dataset.index);
+                const key = target.dataset.key;
+
+                if (arrayName && key) {
+                    let value = target.value;
+                    if (key === 'valor' || key === 'total') {
+                        value = parseFloat(value) || 0;
+                    }
+
+                    if (arrayName === "contasCasa") {
+                        contasCasa[index][key] = value;
+                    } else if (arrayName === "minhasContasPessoais") {
+                        minhasContasPessoais[index][key] = value;
+                    } else if (arrayName === "dividas") {
+                        dividas[index][key] = value;
+                    }
+                }
+                renderizarTabelas();
+                atualizarDashboard();
+            }
+        });
+
+        // Event listeners para o modal de confirmação
+        confirmYesButton.addEventListener('click', () => {
+            if (pendingDeletion) {
+                const { arrayName, index } = pendingDeletion;
+                if (arrayName === 'contasCasa') contasCasa.splice(index, 1);
+                else if (arrayName === 'minhasContasPessoais') minhasContasPessoais.splice(index, 1);
+                else if (arrayName === 'dividas') dividas.splice(index, 1);
+                renderizarTabelas();
+                atualizarDashboard();
+            }
+            confirmationModal.classList.add('hidden');
+            pendingDeletion = null;
+        });
+
+        confirmNoButton.addEventListener('click', () => {
+            confirmationModal.classList.add('hidden');
+            pendingDeletion = null;
+        });
+
+        // Event listeners para o modal de adição
+        addItemSaveButton.addEventListener('click', () => {
+            const itemName = addItemNameInput.value.trim();
+            if (itemName) {
+                if (pendingAdditionType === 'contasCasa') {
+                    contasCasa.push({ id: generateId(), item: itemName, total: 0, status: 'em aberto' });
+                } else if (pendingAdditionType === 'minhasContasPessoais') {
+                    minhasContasPessoais.push({ id: generateId(), item: itemName, valor: 0, status: 'em aberto' });
+                } else if (pendingAdditionType === 'dividas') {
+                    dividas.push({ id: generateId(), nome: itemName, valor: 0, status: 'em aberto' });
+                }
+                renderizarTabelas();
+                atualizarDashboard();
+            }
+            addItemModal.classList.add('hidden');
+            pendingAdditionType = null;
+        });
+        
+        addItemCancelButton.addEventListener('click', () => {
+            addItemModal.classList.add('hidden');
+            pendingAdditionType = null;
+        });
+        
+    </script>
+</body>
+</html>
