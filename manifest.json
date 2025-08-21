@@ -2,7 +2,7 @@
     "name": "Dashboard Financeiro",
     "short_name": "Finanças",
     "description": "Seu painel financeiro interativo.",
-    "start_url": "/dashboard.html",
+    "start_url": "./index.html"
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#10B981",
@@ -19,3 +19,4 @@
         }
     ]
 }
+
